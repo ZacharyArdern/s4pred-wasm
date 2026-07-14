@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>S4PRED — Secondary Structure</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #f8f8f8;
+  color: #222;
+  min-height: 100vh;
+}
+
+header {
+  background: #1a1a2e;
+  color: #fff;
+  padding: 18px 32px;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+header h1 { font-size: 1.2em; font-weight: 600; letter-spacing: 0.03em; }
+header p  { font-size: 0.82em; color: #aab; }
+
+main { max-width: 960px; margin: 0 auto; padding: 28px 24px; }
+
+/* ── Input card ─────────────────────────────────────────────────────────── */
+.card {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
+}
+.card h2 { font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.08em;
+           color: #666; margin-bottom: 14px; }
+
+.input-row { display: flex; gap: 14px; align-items: flex-start; }
+
+.drop-zone {
+  flex: 0 0 160px;
+  border: 2px dashed #ccc;
+  border-radius: 6px;
+  padding: 18px 12px;
+  text-align: center;
+  font-size: 0.82em;
+  color: #888;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  user-select: none;
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #2563eb;
+}
+.drop-zone input { display: none; }
+.drop-zone .icon { font-size: 1.8em; display: block; margin-bottom: 6px; }
+
+textarea {
+  flex: 1;
+  height: 110px;
+  font-family: monospace;
+  font-size: 0.84em;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 10px;
+  resize: vertical;
+  color: #333;
+}
+textarea:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 2px #dbeafe; }
+
+/* ── Model selector ─────────────────────────────────────────────────────── */
+.model-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.model-row label { font-size: 0.84em; color: #555; }
+
+.model-opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1.5px solid #ddd;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.83em;
+  transition: border-color 0.15s, background 0.15s;
+  user-select: none;
+}
+.model-opt input { display: none; }
+.model-opt.selected { border-color: #2563eb; background: #eff6ff; color: #1d4ed8; font-weight: 500; }
+.model-opt .size { font-size: 0.78em; color: #888; margin-left: 2px; }
+.model-opt.selected .size { color: #6b8ed6; }
+
+.run-row { display: flex; gap: 12px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+
+button#run-btn {
+  padding: 9px 26px;
+  background: #1a1a2e;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9em;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+button#run-btn:hover:not(:disabled) { background: #2d2d50; }
+button#run-btn:disabled { background: #aaa; cursor: default; }
+
+#status {
+  font-size: 0.83em;
+  color: #666;
+}
+#status.error { color: #dc2626; }
+#status.ok    { color: #16a34a; }
+
+progress#prog {
+  width: 100%;
+  height: 4px;
+  margin-top: 8px;
+  border-radius: 2px;
+}
+
+/* ── Results ─────────────────────────────────────────────────────────────── */
+#results { margin-top: 4px; }
+
+.result-card {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+}
+.result-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.result-name { font-weight: 600; font-size: 1em; font-family: monospace; }
+.result-meta { font-size: 0.8em; color: #888; }
+
+/* ── Protein ribbon visualisation ───────────────────────────────────────── */
+.ribbon-wrap { position: relative; width: 100%; margin-bottom: 6px; }
+canvas.ribbon { display: block; width: 100%; image-rendering: crisp-edges; }
+
+/* ── Sequence / confidence rows ─────────────────────────────────────────── */
+.ss-text {
+  font-family: monospace;
+  font-size: 0.78em;
+  line-height: 1.7;
+  white-space: pre;
+  overflow-x: auto;
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+.ss-text .C { color: #888; }
+.ss-text .H { color: #c0392b; font-weight: 600; }
+.ss-text .E { color: #1d4ed8; font-weight: 600; }
+
+/* ── Legend + download ──────────────────────────────────────────────────── */
+.result-footer {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.legend { display: flex; gap: 14px; font-size: 0.8em; }
+.legend span { display: flex; align-items: center; gap: 5px; }
+.swatch { width: 14px; height: 14px; border-radius: 2px; flex-shrink: 0; }
+.sw-H { background: #c0392b; }
+.sw-E { background: #1d4ed8; }
+.sw-C { background: #bbb; }
+
+button.dl-btn {
+  margin-left: auto;
+  padding: 5px 14px;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.8em;
+  cursor: pointer;
+  color: #444;
+}
+button.dl-btn:hover { background: #eee; }
+
+/* ── Hourglass ──────────────────────────────────────────────────────────── */
+#hourglass {
+  display: none;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.82em;
+  color: #666;
+}
+#hourglass.active { display: flex; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>S4PRED</h1>
+  <p>Single-sequence secondary structure prediction · runs in your browser · no data sent to server</p>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Input</h2>
+    <div class="input-row">
+      <!-- file drop zone -->
+      <div class="drop-zone" id="drop-zone" title="Click or drag a FASTA file">
+        <span class="icon">📂</span>
+        Drop FASTA<br>or click
+        <input type="file" id="file-input" accept=".fa,.fasta,.fas,.txt">
+      </div>
+      <!-- sequence text area -->
+      <textarea id="seq-input" placeholder=">ProteinName
+MGDIQVQVNIDDNGKNFDYTYTVTTESELQKVLNELMD...
+
+Paste a FASTA file or bare amino acid sequence.
+Multiple sequences are supported."></textarea>
+    </div>
+
+    <!-- model selection -->
+    <div class="model-row">
+      <label>Model:</label>
+      <div class="model-opt selected" id="opt-int8" onclick="selectModel('int8')">
+        <input type="radio" name="model" value="int8" checked>
+        int8 quantized <span class="size">· 225 MB</span>
+      </div>
+      <div class="model-opt" id="opt-fp16" onclick="selectModel('fp16')">
+        <input type="radio" name="model" value="fp16">
+        fp16 standard <span class="size">· 449 MB</span>
+      </div>
+    </div>
+
+    <div class="run-row">
+      <button id="run-btn" onclick="runPrediction()" disabled>Loading model…</button>
+      <span id="status">Downloading model, please wait…</span>
+      <div id="hourglass" aria-label="Running prediction…">
+        <svg viewBox="0 0 40 72" width="28" height="50" aria-hidden="true">
+          <defs>
+            <clipPath id="clip-top-hg">
+              <polygon points="4,6 36,6 20,36"/>
+            </clipPath>
+            <clipPath id="clip-bot-hg">
+              <polygon points="20,36 4,66 36,66"/>
+            </clipPath>
+          </defs>
+          <!-- caps -->
+          <rect x="2" y="2"  width="36" height="5" rx="1.5" fill="#555"/>
+          <rect x="2" y="65" width="36" height="5" rx="1.5" fill="#555"/>
+          <!-- glass body -->
+          <path d="M4,6 L36,6 L20,36 L36,66 L4,66 L20,36 Z"
+                fill="rgba(160,210,255,0.12)" stroke="#666" stroke-width="1.5" stroke-linejoin="round"/>
+          <!-- top sand (draining) -->
+          <rect x="0" y="6" width="40" height="30" fill="#c8952b" clip-path="url(#clip-top-hg)">
+            <animate attributeName="height" from="30" to="0"  dur="2s" repeatCount="indefinite" calcMode="linear"/>
+            <animate attributeName="y"      from="6"  to="36" dur="2s" repeatCount="indefinite" calcMode="linear"/>
+          </rect>
+          <!-- bottom sand (filling) -->
+          <rect x="0" y="66" width="40" height="0" fill="#c8952b" clip-path="url(#clip-bot-hg)">
+            <animate attributeName="height" from="0"  to="30" dur="2s" repeatCount="indefinite" calcMode="linear"/>
+            <animate attributeName="y"      from="66" to="36" dur="2s" repeatCount="indefinite" calcMode="linear"/>
+          </rect>
+          <!-- trickle at neck: three staggered grains -->
+          <circle cx="20" cy="38" r="1.3" fill="#a07820">
+            <animate attributeName="cy"      from="34" to="43" dur="0.5s" begin="0s"    repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0;1;1;0" dur="0.5s" begin="0s"    repeatCount="indefinite"/>
+          </circle>
+          <circle cx="19.2" cy="38" r="1.1" fill="#b08828">
+            <animate attributeName="cy"      from="34" to="43" dur="0.5s" begin="0.17s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0;1;1;0" dur="0.5s" begin="0.17s" repeatCount="indefinite"/>
+          </circle>
+          <circle cx="20.8" cy="38" r="1.0" fill="#a07820">
+            <animate attributeName="cy"      from="34" to="43" dur="0.5s" begin="0.33s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0;1;1;0" dur="0.5s" begin="0.33s" repeatCount="indefinite"/>
+          </circle>
+        </svg>
+        <span id="hg-label">predicting…</span>
+      </div>
+    </div>
+    <progress id="prog" value="0" max="1"></progress>
+  </div>
+
+  <div id="results"></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
+<script>
+// ── Constants ─────────────────────────────────────────────────────────────────
+const AA_MAP = {A:0,R:1,N:2,D:3,C:4,Q:5,E:6,G:7,H:8,I:9,L:10,K:11,M:12,F:13,P:14,S:15,T:16,W:17,Y:18,V:19};
+const LABELS = ['C','H','E'];
+const COLORS = { C: '#c8c8c8', H: '#c0392b', E: '#1d4ed8' };
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let sessions  = {};           // { int8: OrtSession, fp16: OrtSession }
+let curModel  = 'int8';
+let loading   = false;
+
+// ── Model selection ───────────────────────────────────────────────────────────
+function selectModel(name) {
+  curModel = name;
+  document.querySelectorAll('.model-opt').forEach(el => el.classList.remove('selected'));
+  document.getElementById('opt-' + name).classList.add('selected');
+  if (!sessions[name]) {
+    document.getElementById('run-btn').disabled = true;
+    loadModel(name);
+  }
+}
+
+// ── Model loading ─────────────────────────────────────────────────────────────
+async function loadModel(name) {
+  if (loading) return;
+  loading = true;
+  const HF_BASE  = 'https://huggingface.co/z-ardern/s4pred-wasm/resolve/main';
+  const fileName = name === 'int8' ? `${HF_BASE}/s4pred_int8.onnx` : `${HF_BASE}/s4pred_fp16.onnx`;
+  const sizeMB   = name === 'int8' ? 225 : 449;
+  const status   = document.getElementById('status');
+  const prog     = document.getElementById('prog');
+  const btn      = document.getElementById('run-btn');
+
+  status.className = '';
+  status.textContent = `Downloading ${fileName} (${sizeMB} MB, cached after first load)…`;
+  prog.value = 0;
+
+  try {
+    ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
+    ort.env.wasm.proxy      = true;   // run WASM in a worker so UI stays live
+
+    const resp = await fetch(fileName);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const total  = parseInt(resp.headers.get('content-length') || '0');
+    const reader = resp.body.getReader();
+    const chunks = [];
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (total) prog.value = received / total;
+    }
+    prog.value = 1;
+
+    const buffer  = await new Blob(chunks).arrayBuffer();
+    sessions[name] = await ort.InferenceSession.create(buffer, {
+      executionProviders: ['wasm'],
+    });
+
+    status.className = 'ok';
+    status.textContent = `${name} model ready.`;
+    btn.disabled = false;
+    btn.textContent = 'Predict';
+  } catch (e) {
+    status.className = 'error';
+    status.textContent = 'Failed to load model: ' + e.message;
+  }
+  loading = false;
+  prog.value = 0;
+}
+
+// ── File drop zone ────────────────────────────────────────────────────────────
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const seqInput  = document.getElementById('seq-input');
+
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => {
+  if (e.target.files[0]) readFile(e.target.files[0]);
+});
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropZone.classList.add('drag-over');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]);
+});
+
+function readFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => { seqInput.value = e.target.result; };
+  reader.readAsText(file);
+}
+
+// ── Tokenisation + FASTA parsing ──────────────────────────────────────────────
+function tokenise(seq) {
+  const upper = seq.toUpperCase();
+  const ids   = new BigInt64Array(upper.length);
+  for (let i = 0; i < upper.length; i++) {
+    ids[i] = BigInt(AA_MAP[upper[i]] ?? 20);
+  }
+  return ids;
+}
+
+function parseFasta(text) {
+  const seqs = [];
+  let name = null, parts = [];
+  for (const line of text.split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+    if (t.startsWith('>')) {
+      if (name !== null) seqs.push({ name, seq: parts.join('').replace(/\s/g,'') });
+      name  = t.slice(1).trim() || 'sequence';
+      parts = [];
+    } else {
+      parts.push(t);
+    }
+  }
+  if (name !== null) seqs.push({ name, seq: parts.join('').replace(/\s/g,'') });
+  // bare sequence (no header)
+  if (seqs.length === 0 && text.trim()) {
+    seqs.push({ name: 'sequence', seq: text.trim().replace(/\s/g,'') });
+  }
+  return seqs.filter(s => s.seq.length > 0);
+}
+
+// ── Inference ─────────────────────────────────────────────────────────────────
+async function runPrediction() {
+  const session = sessions[curModel];
+  if (!session) return;
+
+  const btn    = document.getElementById('run-btn');
+  const status = document.getElementById('status');
+  const prog   = document.getElementById('prog');
+  const resDiv = document.getElementById('results');
+  resDiv.innerHTML = '';
+
+  const entries = parseFasta(seqInput.value);
+  if (!entries.length) {
+    status.className = 'error';
+    status.textContent = 'No sequence found — paste a FASTA or amino acid sequence above.';
+    return;
+  }
+
+  btn.disabled = true;
+  status.className = '';
+  status.textContent = '';
+  document.getElementById('hourglass').classList.add('active');
+  document.getElementById('hg-label').textContent =
+    `predicting ${entries.length} sequence${entries.length > 1 ? 's' : ''}…`;
+  prog.value = 0;
+
+  // Yield to browser paint loop so hourglass renders before inference starts
+  await new Promise(r => setTimeout(r, 30));
+
+  const t0 = performance.now();
+
+  for (let idx = 0; idx < entries.length; idx++) {
+    const { name, seq } = entries[idx];
+    prog.value = idx / entries.length;
+
+    const ids    = tokenise(seq);
+    const tensor = new ort.Tensor('int64', ids, [1, seq.length]);
+    const out    = await session.run({ tokens: tensor });
+    const logP   = out['log_probs'].data;   // Float32Array [L*3]
+
+    // decode
+    const ss   = [];
+    const conf = [];
+    for (let i = 0; i < seq.length; i++) {
+      const b  = i * 3;
+      const p0 = logP[b], p1 = logP[b+1], p2 = logP[b+2];
+      const m  = Math.max(p0, p1, p2);
+      const e0 = Math.exp(p0-m), e1 = Math.exp(p1-m), e2 = Math.exp(p2-m);
+      const s  = e0 + e1 + e2;
+      conf.push([e0/s, e1/s, e2/s]);
+      ss.push(p0 >= p1 && p0 >= p2 ? 'C' : p1 >= p2 ? 'H' : 'E');
+    }
+
+    resDiv.appendChild(buildResultCard(name, seq, ss, conf));
+  }
+
+  document.getElementById('hourglass').classList.remove('active');
+  prog.value = 1;
+  const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+  status.className = 'ok';
+  status.textContent = `Done in ${elapsed}s (${entries.length} sequence${entries.length > 1 ? 's' : ''}, ${curModel} model)`;
+  btn.disabled = false;
+}
+
+// ── Ribbon visualisation ──────────────────────────────────────────────────────
+const RIBBON_H    = 28;   // ribbon height px
+const AXIS_H      = 28;   // axis label area px
+const CANVAS_H    = RIBBON_H + AXIS_H;
+const TICK_EVERY  = 50;   // residues between major ticks
+
+function buildRibbon(seq, ss, conf) {
+  const wrap    = document.createElement('div');
+  wrap.className = 'ribbon-wrap';
+
+  const canvas  = document.createElement('canvas');
+  canvas.className = 'ribbon';
+  const L = seq.length;
+
+  // Use devicePixelRatio for crisp rendering
+  const dpr   = window.devicePixelRatio || 1;
+  const cssW  = wrap.getBoundingClientRect().width || 880;
+  const physW = Math.round(cssW * dpr);
+  const physH = Math.round(CANVAS_H * dpr);
+
+  canvas.width  = physW;
+  canvas.height = physH;
+  canvas.style.height = CANVAS_H + 'px';
+
+  wrap.appendChild(canvas);
+
+  // Draw after the element is inserted (need layout width)
+  requestAnimationFrame(() => {
+    const actualCssW = wrap.getBoundingClientRect().width;
+    const pW = Math.round(actualCssW * dpr);
+    canvas.width  = pW;
+    canvas.height = physH;
+    canvas.style.height = CANVAS_H + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const W = actualCssW;
+
+    // Background
+    ctx.fillStyle = '#f0f0f0';
+    ctx.fillRect(0, 0, W, RIBBON_H);
+
+    // Draw each residue as a vertical slice, coloured by SS
+    for (let i = 0; i < L; i++) {
+      const x0 = (i / L) * W;
+      const x1 = ((i + 1) / L) * W;
+      ctx.fillStyle = COLORS[ss[i]];
+      ctx.fillRect(x0, 0, Math.max(x1 - x0, 0.5), RIBBON_H);
+    }
+
+    // Confidence overlay: dim positions where top prob < 0.7
+    for (let i = 0; i < L; i++) {
+      const topConf = Math.max(...conf[i]);
+      if (topConf < 0.7) {
+        const alpha = 0.5 * (0.7 - topConf) / 0.7;
+        const x0 = (i / L) * W;
+        const x1 = ((i + 1) / L) * W;
+        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+        ctx.fillRect(x0, 0, Math.max(x1 - x0, 0.5), RIBBON_H);
+      }
+    }
+
+    // Thin border around ribbon
+    ctx.strokeStyle = '#bbb';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, W - 1, RIBBON_H - 1);
+
+    // X-axis ticks and labels
+    ctx.fillStyle   = '#555';
+    ctx.strokeStyle = '#bbb';
+    ctx.lineWidth   = 1;
+    ctx.font        = `${11}px system-ui, sans-serif`;
+    ctx.textAlign   = 'center';
+
+    // Always label position 1
+    const labelPositions = [1];
+    for (let r = TICK_EVERY; r <= L; r += TICK_EVERY) labelPositions.push(r);
+    if (labelPositions[labelPositions.length - 1] !== L) labelPositions.push(L);
+
+    for (const r of labelPositions) {
+      const x = ((r - 0.5) / L) * W;
+      // tick line
+      ctx.beginPath();
+      ctx.moveTo(x, RIBBON_H);
+      ctx.lineTo(x, RIBBON_H + 5);
+      ctx.stroke();
+      // label
+      ctx.fillText(String(r), x, CANVAS_H - 2);
+    }
+  });
+
+  return wrap;
+}
+
+// ── Text SS rows (chunked) ────────────────────────────────────────────────────
+function buildSSText(seq, ss) {
+  const CHUNK = 80;
+  const div   = document.createElement('div');
+  div.className = 'ss-text';
+
+  for (let start = 0; start < seq.length; start += CHUNK) {
+    const end     = Math.min(start + CHUNK, seq.length);
+    const seqChunk = seq.slice(start, end);
+    const ssChunk  = ss.slice(start, end);
+
+    // position prefix, right-aligned to 4 chars
+    const pos = String(start + 1).padStart(4) + ' ';
+
+    // sequence line (plain)
+    const seqLine = document.createElement('div');
+    seqLine.textContent = pos + seqChunk;
+
+    // SS line (coloured)
+    const ssLine = document.createElement('div');
+    ssLine.innerHTML = ' '.repeat(pos.length) +
+      ssChunk.map(c => `<span class="${c}">${c}</span>`).join('');
+
+    div.appendChild(seqLine);
+    div.appendChild(ssLine);
+    if (end < seq.length) div.appendChild(document.createElement('br'));
+  }
+  return div;
+}
+
+// ── Assemble result card ──────────────────────────────────────────────────────
+function buildResultCard(name, seq, ss, conf) {
+  const card = document.createElement('div');
+  card.className = 'result-card';
+
+  // header
+  const hdr = document.createElement('div');
+  hdr.className = 'result-header';
+  hdr.innerHTML =
+    `<span class="result-name">${escHtml(name)}</span>` +
+    `<span class="result-meta">${seq.length} aa &middot; ` +
+    `H ${pct(ss,'H')}% &middot; E ${pct(ss,'E')}% &middot; C ${pct(ss,'C')}%</span>`;
+  card.appendChild(hdr);
+
+  // ribbon
+  card.appendChild(buildRibbon(seq, ss, conf));
+
+  // sequence + SS text
+  card.appendChild(buildSSText(seq, ss));
+
+  // footer: legend + download
+  const footer = document.createElement('div');
+  footer.className = 'result-footer';
+  footer.innerHTML = `
+    <div class="legend">
+      <span><div class="swatch sw-H"></div>Helix (H)</span>
+      <span><div class="swatch sw-E"></div>Strand (E)</span>
+      <span><div class="swatch sw-C"></div>Coil (C)</span>
+    </div>`;
+
+  const dlBtn = document.createElement('button');
+  dlBtn.className = 'dl-btn';
+  dlBtn.textContent = 'Download .ss2';
+  dlBtn.onclick = () => downloadSS2(name, seq, ss, conf);
+  footer.appendChild(dlBtn);
+  card.appendChild(footer);
+
+  return card;
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function pct(ss, cls) {
+  return Math.round(100 * ss.filter(c => c === cls).length / ss.length);
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function downloadSS2(name, seq, ss, conf) {
+  let txt = '# PSIPRED VFORMAT (S4PRED WASM)\n\n';
+  for (let i = 0; i < seq.length; i++) {
+    const [pc, ph, pe] = conf[i];
+    txt += `${String(i+1).padStart(4)} ${seq[i]} ${ss[i]}   ${pc.toFixed(3)}  ${ph.toFixed(3)}  ${pe.toFixed(3)}\n`;
+  }
+  const a = document.createElement('a');
+  a.href     = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
+  a.download = name.replace(/[^\w.-]/g, '_') + '.ss2';
+  a.click();
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+loadModel('int8');
+</script>
+</body>
+</html>
